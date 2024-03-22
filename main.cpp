@@ -9,60 +9,70 @@ g++ main.o -o main -lsfml-graphics -lsfml-window -lsfml-system
 #include <time.h>
 #include <SFML/Graphics.hpp>
 
+struct XYset_t {
+    float minr, maxr, mini, maxi;
+    float scale, scale_coef;
+    float dm;
+    float dx, dy;
+    float ux, uy;
+    float mx, my;
+    float scrx, scry;
+};
+
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define WIDTH  800
 #define HEIGHT 600
-#define DX (float)1/WIDTH
-#define DY (float)1/WIDTH
 #define POS(x, y) ((y) * WIDTH + x) * 4
 
-void render_(sf::Uint8* pixels, float ux, float uy)
+void render_(sf::Uint8* pixels, XYset_t* XYset)
 {
-    const int max_count = 256;
-    const float max_dist = 100.f;
-    float x0, y0, X, Y, xx, yy, xy, r;
-    int steps;
-    for (int y = 0; y < HEIGHT; y++) {
-        for (int x = 0; x < WIDTH; x += 4) {
-            for (int i = 0; i < 4; i++) {
-                X = x0 = ux - (float)(WIDTH / 2) * DX + i * DX + DX * 4 * x / 4 - 1.325f;
-                Y = y0 = uy + ((float)y - (float)(HEIGHT / 2))*DY;
+    const int maxcount = 256;
+    float zx = 0, zy = 0, cx = 0, cy = 0;
+    float temp;
+    int pack = 32, steps;
+    XYset->scrx = XYset->scale * (XYset->ux - abs(XYset->minr)) + XYset->mx;
+    XYset->scry = XYset->scale * (XYset->uy - abs(XYset->mini)) + XYset->my;
+    for (int iy = 0; iy < HEIGHT; iy++) {
+        for (int ix = 0; ix < WIDTH; ix += pack) {
+            for (int i = 0; i < pack; i++) {
+                cx = XYset->scrx + XYset->scale * (XYset->dx * (ix + i));
+                cy = XYset->scry + XYset->scale * (XYset->dy * iy);
+               
+                zx = 0;
+                zy = 0;
                 steps = 0;
-                for (; steps < max_count; steps++) {
-                    xx = X * X;
-                    yy = Y * Y;
-                    xy = X * Y;
-                    r = xx + yy;
-                    if (r >= max_dist) break;
-                    X = xx - yy + x0;
-                    Y = 2 * xy + y0;
+                for (;zx * zx + zy * zy <= 4 && steps < maxcount; steps++) {
+                    temp = zx;
+                    zx = (zx * zx) - (zy * zy) + cx;
+                    zy = (2 * temp * zy) + cy;
                 }
-                float I = exp(sqrtf((float)steps / (float)max_count)) * 255.f;
+
+                float I = exp(sqrtf((float)steps / (float)maxcount)) * 255.f;
                 unsigned char c = (unsigned char) I;
-                if (steps < max_count) {
-                    pixels[POS(x, y) + i * 4 + 0] = (unsigned char) MIN(255, exp((float)(c - 255) / 45.f) * 10000.f);
-                    pixels[POS(x, y) + i * 4 + 1] = (unsigned char) MIN(255, exp((float)(c - 255) / 37.f) * 10000.f);
-                    pixels[POS(x, y) + i * 4 + 2] = (unsigned char) MIN(255, 255 * pow(cos(c / 255), 2));
-                    pixels[POS(x, y) + i * 4 + 3] = 255;
+                if (steps < maxcount) {
+                    pixels[POS(ix, iy) + i * 4 + 0] = (unsigned char) MIN(255, exp((float)(c - 255) / 45.f) * 10000.f);
+                    pixels[POS(ix, iy) + i * 4 + 1] = (unsigned char) MIN(255, exp((float)(c - 255) / 37.f) * 10000.f);
+                    pixels[POS(ix, iy) + i * 4 + 2] = (unsigned char) MIN(255, 255 * pow(cos(c / 255), 2));
+                    pixels[POS(ix, iy) + i * 4 + 3] = 255;
                 } else {
-                    pixels[POS(x, y) + i * 4 + 0] = 0;
-                    pixels[POS(x, y) + i * 4 + 1] = 0;
-                    pixels[POS(x, y) + i * 4 + 2] = 0;
-                    pixels[POS(x, y) + i * 4 + 3] = 255;
+                    pixels[POS(ix, iy) + i * 4 + 0] = 0;
+                    pixels[POS(ix, iy) + i * 4 + 1] = 0;
+                    pixels[POS(ix, iy) + i * 4 + 2] = 0;
+                    pixels[POS(ix, iy) + i * 4 + 3] = 255;
                 }
             }
         }
     }
 }
 
-int render(sf::Uint8* pixels, float ux, float uy)
+int render(sf::Uint8* pixels, XYset_t* XYset)
 {
     clock_t start;
     clock_t end;
 
     start = clock();
-    render_(pixels, ux, uy);
+    render_(pixels, XYset);
     end = clock();
 
     float time = (double)(end - start);
@@ -71,37 +81,54 @@ int render(sf::Uint8* pixels, float ux, float uy)
     return FPS;
 }
 
-int control(sf::Event event, float* x, float* y)
+int control(sf::RenderWindow* window, sf::Event event, XYset_t* XYset)
 {
+    sf::Vector2i mouse_pos = sf::Mouse::getPosition(*window);
     switch (event.type) {
         case sf::Event::Closed:
             return 1;
+        case sf::Event::MouseButtonReleased:
+            switch (event.mouseButton.button) {
+                case sf::Mouse::Left:
+                    XYset->mx -= (WIDTH  / 2 - (float)mouse_pos.x) * XYset->dm / WIDTH  * XYset->scale;
+                    XYset->my -= (HEIGHT / 2 - (float)mouse_pos.y) * XYset->dm / HEIGHT * XYset->scale;
+                    XYset->scale /= XYset->scale_coef;
+                    break;
+                case sf::Mouse::Right:
+                    XYset->mx += (WIDTH  / 2 - (float)mouse_pos.x) * XYset->dm / WIDTH  * XYset->scale;
+                    XYset->my += (HEIGHT / 2 - (float)mouse_pos.y) * XYset->dm / HEIGHT * XYset->scale;
+                    XYset->scale *= XYset->scale_coef;
+                    break;
+                default:
+                    break;
+            }
+            break;
         case sf::Event::EventType::KeyPressed:
             switch (event.key.code) {
                 case sf::Keyboard::Left:
-                    *x -= DX;
+                    XYset->ux -= XYset->dx;
                     break;
                 case sf::Keyboard::Right:
-                    *x += DX;
+                    XYset->ux += XYset->dx;
                     break;
                 case sf::Keyboard::Down:
-                    *y += DX;
+                    XYset->uy += XYset->dy;
                     break;
                 case sf::Keyboard::Up:
-                    *y -= DX;
+                    XYset->uy -= XYset->dy;
                     break;
                 
                 case sf::Keyboard::A:
-                    *x -= DX;
+                    XYset->ux -= XYset->dx;
                     break;
                 case sf::Keyboard::D:
-                    *x += DX;
+                    XYset->ux += XYset->dx;
                     break;
                 case sf::Keyboard::S:
-                    *y += DX;
+                    XYset->uy += XYset->dy;
                     break;
                 case sf::Keyboard::W:
-                    *y -= DX;
+                    XYset->uy -= XYset->dy;
                     break;
                 default:
                     break;
@@ -128,14 +155,23 @@ int main()
     FPS_Text.setPosition(10, 10);
     FPS_Text.setCharacterSize(18);
     FPS_Text.setColor(sf::Color(232, 40, 250));
+    sf::Text POS_Text;
+    POS_Text.setFont(font);
+    POS_Text.setPosition(10, 30);
+    POS_Text.setCharacterSize(18);
+    POS_Text.setColor(sf::Color(232, 40, 250));
 
-    float x = 0.f, y = 0.f; 
+    XYset_t XYset = {-2.f, 2.f, -2.f, 2.f, 1.f, 1.1f, 2.f};
+    XYset.dx = (XYset.maxr - XYset.minr) / WIDTH;
+    XYset.dy = (XYset.maxi - XYset.mini) / HEIGHT;
+
+    float x = 0.f, y = 0.f, scale = 1.0f;
     int cycle_counter = 0;
     bool image_saved = false;
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
-            if (control(event, &x, &y)) {
+            if (control(&window, event, &XYset)) {
                 window.close();
                 break;
             }
@@ -143,13 +179,17 @@ int main()
 
         window.clear();
 
-        float FPS = render(pixels, x, y);
+        float FPS = render(pixels, &XYset);
         texture.update(pixels);
         window.draw(sprite);
 
         auto fps_string = "FPS: " + std::to_string(FPS);
         FPS_Text.setString(fps_string);
         window.draw(FPS_Text);
+
+        auto pos_string = "POS: " + std::to_string(XYset.scrx) + " " + std::to_string(XYset.scry);
+        POS_Text.setString(pos_string);
+        window.draw(POS_Text);
 
         window.display();
 
