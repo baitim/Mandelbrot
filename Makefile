@@ -1,8 +1,11 @@
+FLAGS = -march=native -O3
+SFML_FLAGS = -lsfml-graphics -lsfml-window -lsfml-system
+
 start: main
-	g++ main.o -o main -lsfml-graphics -lsfml-window -lsfml-system
+	g++ main.o -o main $(SFML_FLAGS)
 
 main:
-	g++ -c main.cpp
+	g++ -c $(FLAGS) main.cpp
 
 clean:
 	rm -rf main.o main
